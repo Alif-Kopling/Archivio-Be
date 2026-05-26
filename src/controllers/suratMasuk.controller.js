@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const suratMasukService = require("../services/suratMasuk.service");
+const notificationService = require("../services/notification.service");
 const { getInitialStatus, normalizeDocumentDate, sanitizeDocumentUpdate } = require("../utils/documentStatus");
 const { getDownloadFileNameFromPath } = require("../utils/fileName");
 const { getBulkFieldValue } = require("../utils/bulkUploadFields");
@@ -35,6 +36,7 @@ exports.create = async (req, res) => {
     const title = typeof req.body.title === "string" ? req.body.title.trim() : "";
     const sender = typeof req.body.sender === "string" ? req.body.sender.trim() : "";
     const documentDate = normalizeDocumentDate(req.body.documentDate);
+    const approverIds = req.body.approverIds ? JSON.parse(req.body.approverIds) : [];
 
     if (!filePath) {
       return res.status(400).json({ error: "Document file is required." });
@@ -53,7 +55,17 @@ exports.create = async (req, res) => {
       filePath,
       status,
       createdBy: userId,
+      approverIds,
     });
+
+    if (approverIds && approverIds.length > 0) {
+      await notificationService.createNotifications({
+        documentId: data.id,
+        title,
+        approverIds,
+        type: "masuk",
+      });
+    }
 
     res.json(data);
   } catch (err) {
@@ -89,6 +101,8 @@ exports.createBulk = async (req, res) => {
           continue;
         }
 
+        const approverIds = req.body.approverIds ? JSON.parse(req.body.approverIds) : [];
+
         const data = await suratMasukService.create({
           title: title.trim(),
           sender: sender.trim(),
@@ -96,7 +110,17 @@ exports.createBulk = async (req, res) => {
           filePath: file.path,
           status,
           createdBy: userId,
+          approverIds,
         });
+
+        if (approverIds && approverIds.length > 0) {
+          await notificationService.createNotifications({
+            documentId: data.id,
+            title,
+            approverIds,
+            type: "masuk",
+          });
+        }
 
         results.push(data);
       } catch (err) {
@@ -134,31 +158,54 @@ exports.update = async (req, res) => {
   }
 };
 
-// update incoming letter status (admin only)
 exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { role } = req.user;
-    const dataToUpdate = sanitizeDocumentUpdate(req.body);
+    const { id: userId, role } = req.user;
+    const { status } = req.body;
 
-    if (!dataToUpdate.status) {
+    if (!status) {
       return res.status(400).json({ error: "New status must be provided." });
     }
 
-    if (role.toLowerCase() !== 'admin') {
-      return res.status(403).json({ error: "Access denied. Only admin can change document status." });
+    const doc = await suratMasukService.getById(id);
+    if (!doc) return res.status(404).json({ error: "Document not found." });
+
+    if (role.toLowerCase() === 'admin') {
+      const updated = await suratMasukService.update(id, { status });
+      return res.json({ message: "Status updated.", data: updated });
     }
 
-    const existingDocument = await suratMasukService.getById(id);
-    if (!existingDocument) {
-      return res.status(404).json({ error: "Document not found." });
+    // Logic untuk user staf (approver)
+    const approverIds = JSON.parse(doc.approverIds || "[]").map(String);
+    if (!approverIds.includes(String(userId))) {
+      return res.status(403).json({ error: "Not authorized to approve." });
     }
 
-    const updatedDocument = await suratMasukService.update(id, { status: dataToUpdate.status });
-    res.json({ message: "Document status updated successfully.", data: updatedDocument });
+    let approvedByIds = JSON.parse(doc.approvedByIds || "[]");
+    const isApproving = status === 'verified' || status === 'final';
+    if (isApproving && !approvedByIds.includes(String(userId))) {
+      approvedByIds.push(String(userId));
+    } else if (status === 'pending' && approvedByIds.includes(String(userId))) {
+      approvedByIds = approvedByIds.filter(id => id !== String(userId));
+    }
 
+    // Cek apakah sudah semua approve
+    const isFullyApproved = approverIds.length > 0 && approverIds.every(id => approvedByIds.includes(id));
+    const finalStatus = isFullyApproved ? 'final' : 'pending';
+
+    const updated = await suratMasukService.update(id, { 
+      status: finalStatus, 
+      approvedByIds: JSON.stringify(approvedByIds) 
+    });
+
+    res.json({ 
+      message: "Approval recorded.", 
+      data: updated,
+      progress: `${approvedByIds.length}/${approverIds.length}`
+    });
   } catch (err) {
-    console.error("Surat Masuk Controller Error:", err);
+    console.error(err);
     res.status(500).json({ error: "Internal server error" });
   }
 };

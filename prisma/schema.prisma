@@ -23,15 +23,30 @@ model Document {
   documentDate DateTime?
   filePath  String
   type      String   // masuk / keluar / sertifikat
-  status    String   @default("draft") // draft / final
+  status    String   @default("pending") // pending / verified / rejected
   createdAt DateTime @default(now())
 
   createdBy Int
   user      User     @relation(fields: [createdBy], references: [id])
-
+  
+  // JSON strings untuk menyimpan array ID
+  approverIds    String? 
+  approvedByIds  String? 
+  
   @@index([status])
   @@index([type])
   @@index([createdAt])
+}
+
+model Notification {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  documentId Int
+  message    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, isRead])
 }
 
 model Setting {

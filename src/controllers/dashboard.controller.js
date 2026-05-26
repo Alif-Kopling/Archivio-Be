@@ -4,10 +4,14 @@ const dashboardService = require("../services/dashboard.service");
 exports.getOverview = async (req, res) => {
   try {
     const { search, page = 1, limit = 10 } = req.query;
+    const { id: userId, role } = req.user;
+    
     const data = await dashboardService.getOverview({
       search,
       page: Number(page),
       limit: Number(limit),
+      userId,
+      role
     });
 
     res.json(data);

@@ -72,6 +72,15 @@ const getById = async (id) => {
 };
 
 const create = async (data) => {
+  let approverIds = (data.approverIds || []).map(String);
+  if (approverIds.length === 0) {
+    const staffUsers = await prisma.user.findMany({
+      where: { role: 'staff' },
+      select: { id: true }
+    });
+    approverIds = staffUsers.map(u => String(u.id));
+  }
+
   return prisma.document.create({
     data: {
       title: data.title,
@@ -79,6 +88,8 @@ const create = async (data) => {
       type: "sertifikat",
       status: data.status || "pending",
       createdBy: data.createdBy,
+      approverIds: JSON.stringify(approverIds),
+      approvedByIds: JSON.stringify([]),
     },
   });
 };

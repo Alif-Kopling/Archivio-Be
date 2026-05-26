@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const sertifikatService = require("../services/sertifikat.service");
+const notificationService = require("../services/notification.service");
 const { getInitialStatus, sanitizeDocumentUpdate } = require("../utils/documentStatus");
 const { getDownloadFileNameFromPath } = require("../utils/fileName");
 const { getBulkFieldValue } = require("../utils/bulkUploadFields");
@@ -32,13 +33,24 @@ exports.create = async (req, res) => {
     const filePath = req.file ? req.file.path : null;
     const { role, id: userId } = req.user;
     const status = getInitialStatus(role);
+    const approverIds = req.body.approverIds ? JSON.parse(req.body.approverIds) : [];
 
     const data = await sertifikatService.create({
       ...req.body,
       filePath,
       status,
       createdBy: userId,
+      approverIds,
     });
+
+    if (approverIds && approverIds.length > 0) {
+      await notificationService.createNotifications({
+        documentId: data.id,
+        title: data.title,
+        approverIds,
+        type: "sertifikat",
+      });
+    }
 
     res.json(data);
   } catch (err) {
@@ -70,28 +82,52 @@ exports.update = async (req, res) => {
   }
 };
 
-// update certificate status (admin only)
+// update certificate status (admin or staff approver)
 exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { role } = req.user;
-    const dataToUpdate = sanitizeDocumentUpdate(req.body);
+    const { id: userId, role } = req.user;
+    const { status } = req.body;
 
-    if (!dataToUpdate.status) {
+    if (!status) {
       return res.status(400).json({ error: "New status must be provided." });
     }
 
-    if (role.toLowerCase() !== "admin") {
-      return res.status(403).json({ error: "Access denied. Only admin can change document status." });
+    const doc = await sertifikatService.getById(id);
+    if (!doc) return res.status(404).json({ error: "Document not found." });
+
+    if (role.toLowerCase() === 'admin') {
+      const updated = await sertifikatService.update(id, { status });
+      return res.json({ message: "Status updated.", data: updated });
     }
 
-    const existingDocument = await sertifikatService.getById(id);
-    if (!existingDocument) {
-      return res.status(404).json({ error: "Document not found." });
+    // Logic untuk user staf (approver)
+    const approverIds = JSON.parse(doc.approverIds || "[]").map(String);
+    if (!approverIds.includes(String(userId))) {
+      return res.status(403).json({ error: "Not authorized to approve." });
     }
 
-    const updatedDocument = await sertifikatService.update(id, { status: dataToUpdate.status });
-    res.json({ message: "Document status updated successfully.", data: updatedDocument });
+    let approvedByIds = JSON.parse(doc.approvedByIds || "[]");
+    const isApproving = status === 'verified' || status === 'final';
+    if (isApproving && !approvedByIds.includes(String(userId))) {
+      approvedByIds.push(String(userId));
+    } else if (status === 'pending' && approvedByIds.includes(String(userId))) {
+      approvedByIds = approvedByIds.filter(id => id !== String(userId));
+    }
+
+    const isFullyApproved = approverIds.length > 0 && approverIds.every(id => approvedByIds.includes(id));
+    const finalStatus = isFullyApproved ? 'final' : 'pending';
+
+    const updated = await sertifikatService.update(id, {
+      status: finalStatus,
+      approvedByIds: JSON.stringify(approvedByIds)
+    });
+
+    res.json({
+      message: "Approval recorded.",
+      data: updated,
+      progress: `${approvedByIds.length}/${approverIds.length}`
+    });
   } catch (err) {
     console.error("Sertifikat Controller Error:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -177,13 +213,25 @@ exports.createBulk = async (req, res) => {
         const title = getBulkFieldValue(req.body, "title", file, index, file.originalname);
         const issuer = getBulkFieldValue(req.body, "issuer", file, index);
 
+        const approverIds = req.body.approverIds ? JSON.parse(req.body.approverIds) : [];
+
         const data = await sertifikatService.create({
           title: title.trim(),
           issuer: issuer.trim() || null,
           filePath: file.path,
           status,
           createdBy: userId,
+          approverIds,
         });
+
+        if (approverIds && approverIds.length > 0) {
+          await notificationService.createNotifications({
+            documentId: data.id,
+            title,
+            approverIds,
+            type: "sertifikat",
+          });
+        }
 
         results.push(data);
       } catch (err) {

@@ -27,17 +27,30 @@ const buildSearchWhere = (search) => {
   };
 };
 
-const getOverview = async ({ search, page = 1, limit = 10 }) => {
+const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
   const safePage = Math.max(1, Number(page) || 1);
   const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
   const skip = (safePage - 1) * safeLimit;
   const searchWhere = buildSearchWhere(search);
+
+  const filterByApprover = role?.toLowerCase() !== 'admin' ? {
+    OR: [
+      // new format: ["1","2","3"]
+      { approverIds: { contains: `"${userId}"` } },
+      // old format: [1,2,3] — cover all positions
+      { approverIds: { contains: `[${userId},` } },
+      { approverIds: { contains: `,${userId},` } },
+      { approverIds: { contains: `,${userId}]` } },
+      { approverIds: { contains: `[${userId}]` } },
+    ]
+  } : {};
 
   // run queries in parallel to avoid multiple round trips
   const [counts, pendingTotal, data] = await Promise.all([
     // group by status to get all counts at once
     prisma.document.groupBy({
       by: ['status'],
+      where: filterByApprover,
       _count: {
         _all: true
       }
@@ -46,6 +59,7 @@ const getOverview = async ({ search, page = 1, limit = 10 }) => {
     prisma.document.count({
       where: {
         ...searchWhere,
+        ...filterByApprover,
         status: { in: PENDING_STATUS_VALUES }
       },
     }),
@@ -53,6 +67,7 @@ const getOverview = async ({ search, page = 1, limit = 10 }) => {
     prisma.document.findMany({
       where: {
         ...searchWhere,
+        ...filterByApprover,
         status: { in: PENDING_STATUS_VALUES }
       },
       orderBy: {
@@ -69,6 +84,8 @@ const getOverview = async ({ search, page = 1, limit = 10 }) => {
         type: true,
         sender: true,
         documentDate: true,
+        approverIds: true,
+        approvedByIds: true,
       },
     }),
   ]);

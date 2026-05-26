@@ -14,9 +14,10 @@ router.get("/download/:id", sertifikatController.download);
 router.post("/", role(["admin", "staff"]), uploadSingle, sertifikatController.create);
 router.post("/bulk", role(["admin", "staff"]), uploadBulk, sertifikatController.createBulk);
 
-router.patch("/:id/status", role(["admin"]), sertifikatController.updateStatus);
-router.patch("/:id/approve", role(["admin"]), sertifikatController.approve);
-router.patch("/:id/reject", role(["admin"]), sertifikatController.reject);
+// both admin and staff approvers can update status / approve / reject
+router.patch("/:id/status", role(["admin", "staff"]), sertifikatController.updateStatus);
+router.patch("/:id/approve", role(["admin", "staff"]), sertifikatController.approve);
+router.patch("/:id/reject", role(["admin", "staff"]), sertifikatController.reject);
 router.put("/:id", role(["admin"]), sertifikatController.update);
 router.delete("/:id", role(["admin"]), sertifikatController.remove);
 

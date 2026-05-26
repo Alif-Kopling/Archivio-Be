@@ -7,7 +7,7 @@ const auth = require("../middlewares/auth.middleware");
 const { role } = require("../middlewares/role.middleware");
 
 router.use(auth);
-router.use(role(["admin"]));
+router.use(role(["admin", "staff"]));
 
 router.get("/", dashboardController.getOverview);
 router.post("/bulk-approve", dashboardController.bulkApprove);

@@ -18,9 +18,10 @@ router.post("/bulk", role(["admin", "staff"]), uploadBulk, suratMasukController.
 
 // admin-only: manage all archives
 // using PATCH for status updates
-router.patch("/:id/status", role(["admin"]), suratMasukController.updateStatus); // dedicated status endpoint
-router.patch("/:id/approve", role(["admin"]), suratMasukController.approve);
-router.patch("/:id/reject", role(["admin"]), suratMasukController.reject);
+// both admin and staff approvers can update status / approve / reject
+router.patch("/:id/status", role(["admin", "staff"]), suratMasukController.updateStatus);
+router.patch("/:id/approve", role(["admin", "staff"]), suratMasukController.approve);
+router.patch("/:id/reject", role(["admin", "staff"]), suratMasukController.reject);
 router.put("/:id", role(["admin"]), suratMasukController.update); // Tetap sediakan PUT untuk update umum jika ada field lain
 router.delete("/:id", role(["admin"]), suratMasukController.remove);
 

@@ -14,6 +14,7 @@ const sertifikatRoutes = require("./routes/sertifikat.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const userRoutes = require("./routes/user.routes");
 const settingRoutes = require("./routes/setting.routes");
+const notificationRoutes = require("./routes/notification.routes");
 
 app.use("/auth", authRoutes);
 app.use("/surat-masuk", suratMasukRoutes);
@@ -22,6 +23,7 @@ app.use("/sertifikat", sertifikatRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/users", userRoutes);
 app.use("/settings", settingRoutes);
+app.use("/notifications", notificationRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
