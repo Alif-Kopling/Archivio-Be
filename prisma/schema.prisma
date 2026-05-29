@@ -54,3 +54,16 @@ model Setting {
   key   String @unique
   value String
 }
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  action     String
+  documentId Int?
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([createdAt])
+}

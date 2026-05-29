@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const suratMasukService = require("../services/suratMasuk.service");
 const notificationService = require("../services/notification.service");
+const auditService = require("../services/audit.service");
 const { getInitialStatus, normalizeDocumentDate, sanitizeDocumentUpdate } = require("../utils/documentStatus");
 const { getDownloadFileNameFromPath } = require("../utils/fileName");
 const { getBulkFieldValue } = require("../utils/bulkUploadFields");
@@ -67,6 +68,7 @@ exports.create = async (req, res) => {
       });
     }
 
+    await auditService.log({ userId, action: "create", documentId: data.id, detail: title });
     res.json(data);
   } catch (err) {
     console.error("Surat Masuk Controller Error:", err);
@@ -122,6 +124,7 @@ exports.createBulk = async (req, res) => {
           });
         }
 
+        await auditService.log({ userId, action: "create", documentId: data.id, detail: title });
         results.push(data);
       } catch (err) {
         errors.push({ file: file.originalname, error: err.message });
@@ -173,6 +176,7 @@ exports.updateStatus = async (req, res) => {
 
     if (role.toLowerCase() === 'admin') {
       const updated = await suratMasukService.update(id, { status });
+      await auditService.log({ userId, action: status === "rejected" ? "reject" : "approve", documentId: id, detail: doc.title });
       return res.json({ message: "Status updated.", data: updated });
     }
 
@@ -184,6 +188,7 @@ exports.updateStatus = async (req, res) => {
 
     if (status === 'rejected') {
       const updated = await suratMasukService.update(id, { status: 'rejected' });
+      await auditService.log({ userId, action: "reject", documentId: id, detail: doc.title });
       return res.json({ message: "Document rejected.", data: updated });
     }
 
@@ -203,6 +208,7 @@ exports.updateStatus = async (req, res) => {
       approvedByIds: JSON.stringify(approvedByIds) 
     });
 
+    await auditService.log({ userId, action: isApproving ? "approve" : "withdraw", documentId: id, detail: doc.title });
     res.json({ 
       message: "Approval recorded.", 
       data: updated,
@@ -245,6 +251,7 @@ exports.remove = async (req, res) => {
       fs.unlinkSync(absolutePath);
     }
 
+    await auditService.log({ userId: req.user.id, action: "delete", documentId: id, detail: document.title });
     res.json({ message: "Archive and its physical file successfully removed." });
   } catch (err) {
     console.error("Surat Masuk Controller Error:", err);
@@ -269,6 +276,7 @@ exports.download = async (req, res) => {
     }
 
     const absolutePath = path.join(__dirname, "../../", finalPath);
+    await auditService.log({ userId: req.user.id, action: "download", documentId: id, detail: document.title });
     res.download(absolutePath, getDownloadFileNameFromPath(finalPath, document.title || "document.pdf"));
   } catch (err) {
     console.error("Surat Masuk Controller Error:", err);

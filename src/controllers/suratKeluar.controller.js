@@ -2,6 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const suratKeluarService = require("../services/suratKeluar.service");
 const notificationService = require("../services/notification.service");
+const auditService = require("../services/audit.service");
 const { sendDocumentEmail } = require("../services/email.service");
 const { getInitialStatus, normalizeDocumentDate, sanitizeDocumentUpdate } = require("../utils/documentStatus");
 const { getDownloadFileNameFromPath } = require("../utils/fileName");
@@ -68,6 +69,7 @@ exports.create = async (req, res) => {
       });
     }
 
+    await auditService.log({ userId, action: "create", documentId: data.id, detail: title });
     res.json(data);
   } catch (err) {
     console.error("Surat Keluar Controller Error:", err);
@@ -114,6 +116,7 @@ exports.updateStatus = async (req, res) => {
 
     if (role.toLowerCase() === 'admin') {
       const updated = await suratKeluarService.update(id, { status });
+      await auditService.log({ userId, action: status === "rejected" ? "reject" : "approve", documentId: id, detail: doc.title });
       return res.json({ message: "Status updated.", data: updated });
     }
 
@@ -121,6 +124,12 @@ exports.updateStatus = async (req, res) => {
     const approverIds = JSON.parse(doc.approverIds || "[]").map(String);
     if (!approverIds.includes(String(userId))) {
       return res.status(403).json({ error: "Not authorized to approve." });
+    }
+
+    if (status === 'rejected') {
+      const updated = await suratKeluarService.update(id, { status: 'rejected' });
+      await auditService.log({ userId, action: "reject", documentId: id, detail: doc.title });
+      return res.json({ message: "Document rejected.", data: updated });
     }
 
     let approvedByIds = JSON.parse(doc.approvedByIds || "[]");
@@ -139,6 +148,7 @@ exports.updateStatus = async (req, res) => {
       approvedByIds: JSON.stringify(approvedByIds)
     });
 
+    await auditService.log({ userId, action: isApproving ? "approve" : "withdraw", documentId: id, detail: doc.title });
     res.json({
       message: "Approval recorded.",
       data: updated,
@@ -179,6 +189,7 @@ exports.remove = async (req, res) => {
       fs.unlinkSync(absolutePath);
     }
 
+    await auditService.log({ userId: req.user.id, action: "delete", documentId: id, detail: document.title });
     res.json({ message: "Outgoing mail archive successfully removed." });
   } catch (err) {
     console.error("Surat Keluar Controller Error:", err);
@@ -203,6 +214,7 @@ exports.download = async (req, res) => {
     }
 
     const absolutePath = path.join(__dirname, "../../", finalPath);
+    await auditService.log({ userId: req.user.id, action: "download", documentId: id, detail: document.title });
     res.download(absolutePath, getDownloadFileNameFromPath(finalPath, document.title || "document.pdf"));
   } catch (err) {
     console.error("Surat Keluar Controller Error:", err);
@@ -270,6 +282,7 @@ exports.sendEmail = async (req, res) => {
       attachmentName: getDownloadFileNameFromPath(finalPath, document.title || "document.pdf"),
     });
 
+    await auditService.log({ userId: req.user.id, action: "send-email", documentId: id, detail: `to: ${to}, subject: ${subject}` });
     return res.status(200).json({
       success: true,
       message: "Email sent successfully",
@@ -347,6 +360,7 @@ exports.createBulk = async (req, res) => {
           });
         }
 
+        await auditService.log({ userId, action: "create", documentId: data.id, detail: title });
         results.push(data);
       } catch (err) {
         errors.push({ file: file.originalname, error: err.message });

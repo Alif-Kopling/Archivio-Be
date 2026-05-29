@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const prisma = require("../config/db");
+const auditService = require("../services/audit.service");
 const { REJECTED_STATUS_VALUES } = require("../utils/documentStatus");
 
 // delete file from disk
@@ -103,6 +104,7 @@ exports.emptyRejectedTrash = async (req, res) => {
       },
     });
 
+    await auditService.log({ userId: req.user.id, action: "empty-trash", detail: `Deleted ${result.count} rejected documents` });
     res.json({
       message: "Rejected documents permanently removed.",
       deleted: result.count,

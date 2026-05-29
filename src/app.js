@@ -15,6 +15,7 @@ const dashboardRoutes = require("./routes/dashboard.routes");
 const userRoutes = require("./routes/user.routes");
 const settingRoutes = require("./routes/setting.routes");
 const notificationRoutes = require("./routes/notification.routes");
+const auditRoutes = require("./routes/audit.routes");
 
 app.use("/auth", authRoutes);
 app.use("/surat-masuk", suratMasukRoutes);
@@ -24,10 +25,15 @@ app.use("/dashboard", dashboardRoutes);
 app.use("/users", userRoutes);
 app.use("/settings", settingRoutes);
 app.use("/notifications", notificationRoutes);
+app.use("/audit", auditRoutes);
+
+const { cleanOld } = require("./services/audit.service");
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  cleanOld();
+  setInterval(cleanOld, 6 * 60 * 60 * 1000);
 });
 
 module.exports = app;

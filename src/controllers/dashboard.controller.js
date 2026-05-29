@@ -1,4 +1,5 @@
 const dashboardService = require("../services/dashboard.service");
+const auditService = require("../services/audit.service");
 
 // get dashboard stats and recent activity
 exports.getOverview = async (req, res) => {
@@ -31,6 +32,7 @@ exports.bulkApprove = async (req, res) => {
     }
 
     const result = await dashboardService.bulkUpdateStatus(ids, "final");
+    await auditService.log({ userId: req.user.id, action: "bulk-approve", detail: `Approved ${result.count} documents: [${ids.join(", ")}]` });
     res.json({
       message: `${result.count} documents successfully approved.`,
       count: result.count,
@@ -51,6 +53,7 @@ exports.bulkReject = async (req, res) => {
     }
 
     const result = await dashboardService.bulkUpdateStatus(ids, "rejected");
+    await auditService.log({ userId: req.user.id, action: "bulk-reject", detail: `Rejected ${result.count} documents: [${ids.join(", ")}]` });
     res.json({
       message: `${result.count} documents successfully rejected.`,
       count: result.count,
