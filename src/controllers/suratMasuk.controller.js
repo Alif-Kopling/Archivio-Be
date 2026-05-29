@@ -182,6 +182,11 @@ exports.updateStatus = async (req, res) => {
       return res.status(403).json({ error: "Not authorized to approve." });
     }
 
+    if (status === 'rejected') {
+      const updated = await suratMasukService.update(id, { status: 'rejected' });
+      return res.json({ message: "Document rejected.", data: updated });
+    }
+
     let approvedByIds = JSON.parse(doc.approvedByIds || "[]");
     const isApproving = status === 'verified' || status === 'final';
     if (isApproving && !approvedByIds.includes(String(userId))) {
@@ -190,7 +195,6 @@ exports.updateStatus = async (req, res) => {
       approvedByIds = approvedByIds.filter(id => id !== String(userId));
     }
 
-    // Cek apakah sudah semua approve
     const isFullyApproved = approverIds.length > 0 && approverIds.every(id => approvedByIds.includes(id));
     const finalStatus = isFullyApproved ? 'final' : 'pending';
 

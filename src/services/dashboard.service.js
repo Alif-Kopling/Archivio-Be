@@ -34,14 +34,22 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
   const searchWhere = buildSearchWhere(search);
 
   const filterByApprover = role?.toLowerCase() !== 'admin' ? {
-    OR: [
-      // new format: ["1","2","3"]
-      { approverIds: { contains: `"${userId}"` } },
-      // old format: [1,2,3] — cover all positions
-      { approverIds: { contains: `[${userId},` } },
-      { approverIds: { contains: `,${userId},` } },
-      { approverIds: { contains: `,${userId}]` } },
-      { approverIds: { contains: `[${userId}]` } },
+    AND: [
+      {
+        OR: [
+          { approverIds: { contains: `"${userId}"` } },
+          { approverIds: { contains: `[${userId},` } },
+          { approverIds: { contains: `,${userId},` } },
+          { approverIds: { contains: `,${userId}]` } },
+          { approverIds: { contains: `[${userId}]` } },
+        ]
+      },
+      {
+        OR: [
+          { approvedByIds: null },
+          { approvedByIds: { not: { contains: `"${userId}"` } } },
+        ]
+      },
     ]
   } : {};
 
