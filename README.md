@@ -78,6 +78,9 @@ npm install
 npx prisma generate
 npx prisma migrate dev --name init
 
+# Membuat Akun Admin Default
+npx prisma db seed
+
 # Start Service
 npm run dev
 ```
