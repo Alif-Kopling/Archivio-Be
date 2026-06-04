@@ -53,8 +53,16 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
     ]
   } : {};
 
+  // Define date range for growth (last 7 days)
+  const last7Days = new Date();
+  last7Days.setDate(last7Days.getDate() - 7);
+
+  // Define date range for active staff (last 24 hours)
+  const last24Hours = new Date();
+  last24Hours.setHours(last24Hours.getHours() - 24);
+
   // run queries in parallel to avoid multiple round trips
-  const [counts, pendingTotal, data] = await Promise.all([
+  const [counts, pendingTotal, data, growthData, activeUsers, leaderboardData] = await Promise.all([
     // group by status to get all counts at once
     prisma.document.groupBy({
       by: ['status'],
@@ -96,7 +104,68 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
         approvedByIds: true,
       },
     }),
+    // 4. Storage & Resource Growth (Document count by day)
+    prisma.document.groupBy({
+      by: ['createdAt'],
+      where: {
+        createdAt: { gte: last7Days }
+      },
+      _count: { _all: true },
+      orderBy: { createdAt: 'asc' }
+    }),
+    // 3. Active Staff Monitoring (Users with recent audit logs)
+    prisma.auditLog.findMany({
+      where: { createdAt: { gte: last24Hours } },
+      distinct: ['userId'],
+      select: {
+        userId: true,
+        createdAt: true,
+      },
+      take: 5
+    }),
+    // 6. Top Contributor & Leaderboard (Users with most document uploads)
+    prisma.document.groupBy({
+      by: ['createdBy'],
+      _count: { _all: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 5
+    })
   ]);
+
+  // Fetch full user details for active staff and leaderboard
+  const [activeStaffDetails, leaderboardDetails] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: activeUsers.map(u => u.userId) } },
+      select: { id: true, name: true, role: true }
+    }),
+    prisma.user.findMany({
+      where: { id: { in: leaderboardData.map(l => l.createdBy) } },
+      select: { id: true, name: true }
+    })
+  ]);
+
+  // Map user details back
+  const activeStaff = activeUsers.map(u => ({
+    ...u,
+    user: activeStaffDetails.find(d => d.id === u.userId)
+  }));
+
+  const leaderboard = leaderboardData.map(l => ({
+    count: l._count._all,
+    user: leaderboardDetails.find(d => d.id === l.createdBy)
+  }));
+
+  // Format growth data for charts (group by day)
+  const growth = growthData.reduce((acc, curr) => {
+    const day = curr.createdAt.toISOString().split('T')[0];
+    acc[day] = (acc[day] || 0) + curr._count._all;
+    return acc;
+  }, {});
+
+  const formattedGrowth = Object.entries(growth).map(([date, count]) => ({
+    date,
+    count
+  }));
 
   // normalize groupBy results into simple counters
   let total = 0;
@@ -125,6 +194,11 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
       pending,
       verified,
     },
+    monitoring: {
+      activeStaff,
+      storageGrowth: formattedGrowth,
+      leaderboard
+    }
   };
 };
 
