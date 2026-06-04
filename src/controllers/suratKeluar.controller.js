@@ -197,6 +197,33 @@ exports.remove = async (req, res) => {
   }
 };
 
+// preview outgoing letter file (inline, no download button)
+exports.preview = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const document = await suratKeluarService.getById(id);
+
+    if (!document) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
+    let finalPath = document.filePath;
+    if (!finalPath.includes("surat-keluar")) {
+      const fileName = path.basename(finalPath);
+      finalPath = path.join("uploads/surat-keluar", fileName);
+    }
+
+    const absolutePath = path.join(__dirname, "../../", finalPath);
+    res.setHeader("Content-Disposition", "inline");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    await auditService.log({ userId: req.user.id, action: "preview", documentId: id, detail: document.title });
+    res.sendFile(absolutePath);
+  } catch (err) {
+    console.error("Surat Keluar Controller Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 // download outgoing letter file
 exports.download = async (req, res) => {
   try {

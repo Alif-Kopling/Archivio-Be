@@ -10,6 +10,7 @@ router.use(auth);
 
 router.get("/", suratKeluarController.getAll);
 router.get("/download/:id", suratKeluarController.download);
+router.get("/preview/:id", suratKeluarController.preview);
 router.post("/send-email", role(["admin", "staff"]), suratKeluarController.sendEmail);
 router.post("/:id/send-email", role(["admin", "staff"]), suratKeluarController.sendEmail);
 

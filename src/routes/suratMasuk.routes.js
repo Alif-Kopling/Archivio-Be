@@ -11,6 +11,7 @@ router.use(auth);
 
 router.get("/", suratMasukController.getAll);
 router.get("/download/:id", suratMasukController.download);
+router.get("/preview/:id", suratMasukController.preview);
 
 // both staff and admin can upload, always saved as draft
 router.post("/", role(["admin", "staff"]), uploadSingle, suratMasukController.create);

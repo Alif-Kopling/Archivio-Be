@@ -10,6 +10,7 @@ router.use(auth);
 
 router.get("/", sertifikatController.getAll);
 router.get("/download/:id", sertifikatController.download);
+router.get("/preview/:id", sertifikatController.preview);
 
 router.post("/", role(["admin", "staff"]), uploadSingle, sertifikatController.create);
 router.post("/bulk", role(["admin", "staff"]), uploadBulk, sertifikatController.createBulk);
