@@ -182,6 +182,16 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
     }
   });
 
+  // count docs created this month
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonth = await prisma.document.count({
+    where: {
+      createdAt: { gte: firstOfMonth },
+      ...filterByApprover,
+    },
+  });
+
   return {
     data,
     total,
@@ -193,6 +203,7 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
       total,
       pending,
       verified,
+      thisMonth,
     },
     monitoring: {
       activeStaff,
