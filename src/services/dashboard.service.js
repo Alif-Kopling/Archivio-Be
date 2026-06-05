@@ -61,8 +61,13 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
   const last24Hours = new Date();
   last24Hours.setHours(last24Hours.getHours() - 24);
 
+  // Month boundaries for thisMonth trend
+  const now = new Date();
+  const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
   // run queries in parallel to avoid multiple round trips
-  const [counts, pendingTotal, data, growthData, activeUsers, leaderboardData] = await Promise.all([
+  const [counts, pendingTotal, data, growthData, activeUsers, leaderboardData, thisMonthCount, lastMonthCount] = await Promise.all([
     // group by status to get all counts at once
     prisma.document.groupBy({
       by: ['status'],
@@ -129,7 +134,21 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
       _count: { _all: true },
       orderBy: { _count: { id: 'desc' } },
       take: 5
-    })
+    }),
+    // 7. Documents created this month
+    prisma.document.count({
+      where: {
+        createdAt: { gte: firstOfThisMonth },
+        ...filterByApprover,
+      },
+    }),
+    // 8. Documents created last month
+    prisma.document.count({
+      where: {
+        createdAt: { gte: firstOfLastMonth, lt: firstOfThisMonth },
+        ...filterByApprover,
+      },
+    }),
   ]);
 
   // Fetch full user details for active staff and leaderboard
@@ -182,15 +201,10 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
     }
   });
 
-  // count docs created this month
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const thisMonth = await prisma.document.count({
-    where: {
-      createdAt: { gte: firstOfMonth },
-      ...filterByApprover,
-    },
-  });
+  // calculate thisMonth trend vs last month
+  const thisMonthTrend = lastMonthCount > 0
+    ? ((thisMonthCount - lastMonthCount) / lastMonthCount) * 100
+    : thisMonthCount > 0 ? 100 : 0;
 
   return {
     data,
@@ -203,7 +217,8 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
       total,
       pending,
       verified,
-      thisMonth,
+      thisMonth: thisMonthCount,
+      thisMonthTrend: Math.round(thisMonthTrend * 10) / 10,
     },
     monitoring: {
       activeStaff,
