@@ -228,6 +228,32 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
   };
 };
 
+const getTrends = async () => {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+  const documents = await prisma.document.findMany({
+    where: { createdAt: { gte: startOfYear } },
+    select: { createdAt: true, type: true },
+  });
+
+  const monthMap = {};
+  for (let i = 0; i < 12; i++) {
+    const key = `${now.getFullYear()}-${String(i + 1).padStart(2, '0')}`;
+    monthMap[key] = { month: key, masuk: 0, keluar: 0, sertifikat: 0, total: 0 };
+  }
+
+  documents.forEach((doc) => {
+    const key = `${doc.createdAt.getFullYear()}-${String(doc.createdAt.getMonth() + 1).padStart(2, '0')}`;
+    if (monthMap[key]) {
+      monthMap[key][doc.type] += 1;
+      monthMap[key].total += 1;
+    }
+  });
+
+  return Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
+};
+
 const bulkUpdateStatus = async (ids, status) => {
   if (!Array.isArray(ids) || ids.length === 0) {
     return { count: 0 };
@@ -247,5 +273,6 @@ const bulkUpdateStatus = async (ids, status) => {
 
 module.exports = {
   getOverview,
+  getTrends,
   bulkUpdateStatus,
 };

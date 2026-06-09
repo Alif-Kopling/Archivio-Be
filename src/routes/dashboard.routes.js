@@ -10,6 +10,7 @@ router.use(auth);
 router.use(role(["admin", "staff"]));
 
 router.get("/", dashboardController.getOverview);
+router.get("/trends", dashboardController.getTrends);
 router.post("/bulk-approve", dashboardController.bulkApprove);
 router.post("/bulk-reject", dashboardController.bulkReject);
 

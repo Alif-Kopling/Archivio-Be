@@ -22,6 +22,17 @@ exports.getOverview = async (req, res) => {
   }
 };
 
+// get monthly trends (last 12 months)
+exports.getTrends = async (req, res) => {
+  try {
+    const data = await dashboardService.getTrends();
+    res.json(data);
+  } catch (err) {
+    console.error("Dashboard Trends Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 // bulk approve documents
 exports.bulkApprove = async (req, res) => {
   try {
