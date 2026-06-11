@@ -79,10 +79,6 @@ const sanitizeDocumentUpdate = (payload = {}) => {
     data.documentDate = documentDate;
   }
 
-  if (typeof payload.filePath === "string" && payload.filePath.trim()) {
-    data.filePath = payload.filePath.trim();
-  }
-
   const normalizedStatus = resolveStatusInput(payload);
   if (normalizedStatus) {
     data.status = normalizedStatus;

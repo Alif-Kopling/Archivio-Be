@@ -1,5 +1,40 @@
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
+
+const MAGIC_BYTES = {
+  pdf: [0x25, 0x50, 0x44, 0x46],
+  jpg: [0xFF, 0xD8, 0xFF],
+  jpeg: [0xFF, 0xD8, 0xFF],
+  png: [0x89, 0x50, 0x4E, 0x47],
+  doc: [0xD0, 0xCF, 0x11, 0xE0],
+  docx: [0x50, 0x4B, 0x03, 0x04],
+};
+
+const validateFileMagic = (req, res, next) => {
+  const files = req.file ? [req.file] : req.files || [];
+  for (const file of files) {
+    const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
+    const magic = MAGIC_BYTES[ext];
+    if (!magic) continue;
+
+    try {
+      const fd = fs.openSync(file.path, 'r');
+      const buf = Buffer.alloc(8);
+      fs.readSync(fd, buf, 0, 8, 0);
+      fs.closeSync(fd);
+
+      const valid = magic.every((byte, i) => buf[i] === byte);
+      if (!valid) {
+        fs.unlinkSync(file.path);
+        return res.status(400).json({ error: `File ${file.originalname} has invalid file signature.` });
+      }
+    } catch {
+      return res.status(500).json({ error: "Failed to validate file." });
+    }
+  }
+  next();
+};
 
 const MIME_TYPES_BY_FOLDER = {
   "surat-masuk": [
@@ -43,7 +78,8 @@ const storage = multer.diskStorage({
     cb(null, `uploads/${folder}/`);
   },
   filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + file.originalname;
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const uniqueName = Date.now() + "-" + safeName;
     cb(null, uniqueName);
   },
 });
@@ -79,4 +115,4 @@ const uploadBulk = multer({
   }
 }).array("files", 20); // Max 20 files
 
-module.exports = { uploadSingle, uploadBulk };
+module.exports = { uploadSingle, uploadBulk, validateFileMagic };

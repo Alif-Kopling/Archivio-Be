@@ -6,7 +6,7 @@ const {
 
 const SORTABLE_FIELDS = ["createdAt", "title", "documentDate", "status"];
 
-const getAll = async ({ search, page = 1, limit = 10, sortBy = "createdAt", sortOrder = "desc", status }) => {
+const getAll = async ({ search, page = 1, limit = 10, sortBy = "createdAt", sortOrder = "desc", status, userId, role }) => {
   const skip = (page - 1) * limit;
   const safeSortBy = SORTABLE_FIELDS.includes(sortBy) ? sortBy : "createdAt";
   const safeSortOrder = sortOrder === "asc" ? "asc" : "desc";
@@ -19,6 +19,12 @@ const getAll = async ({ search, page = 1, limit = 10, sortBy = "createdAt", sort
       },
     }),
     ...(status && status !== "all" && { status }),
+    ...(role && role.toLowerCase() !== "admin" && userId && {
+      OR: [
+        { createdBy: userId },
+        { approverIds: { contains: `"${String(userId)}"` } },
+      ],
+    }),
   };
 
   const [data, total, pending, verified] = await Promise.all([

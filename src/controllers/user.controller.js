@@ -19,7 +19,8 @@ exports.create = async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("User Controller Error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    const status = err.message.startsWith("Valid email") || err.message.startsWith("Name") || err.message.startsWith("Password") || err.message.startsWith("Role") ? 400 : 500;
+    res.status(status).json({ error: err.message });
   }
 };
 

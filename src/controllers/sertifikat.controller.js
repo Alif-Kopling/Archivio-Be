@@ -11,6 +11,7 @@ const { getBulkFieldValue } = require("../utils/bulkUploadFields");
 exports.getAll = async (req, res) => {
   try {
     const { search, page = 1, limit = 10, sortBy, sortOrder, status } = req.query;
+    const { id: userId, role } = req.user;
 
     const data = await sertifikatService.getAll({
       search,
@@ -19,6 +20,8 @@ exports.getAll = async (req, res) => {
       sortBy,
       sortOrder,
       status,
+      userId,
+      role,
     });
 
     res.json(data);
@@ -64,19 +67,13 @@ exports.create = async (req, res) => {
 // update certificate
 exports.update = async (req, res) => {
   try {
-    const { id } = req.params;
     const dataToUpdate = sanitizeDocumentUpdate(req.body);
 
     if (!Object.keys(dataToUpdate).length) {
       return res.status(400).json({ error: "No valid data provided for update." });
     }
 
-    const existingDocument = await sertifikatService.getById(id);
-    if (!existingDocument) {
-      return res.status(404).json({ error: "Document not found." });
-    }
-
-    const data = await sertifikatService.update(id, dataToUpdate);
+    const data = await sertifikatService.update(req.document.id, dataToUpdate);
     res.json(data);
   } catch (err) {
     console.error("Sertifikat Controller Error:", err);
@@ -87,20 +84,17 @@ exports.update = async (req, res) => {
 // update certificate status (admin or staff approver)
 exports.updateStatus = async (req, res) => {
   try {
-    const { id } = req.params;
     const { id: userId, role } = req.user;
     const { status } = req.body;
+    const doc = req.document;
 
     if (!status) {
       return res.status(400).json({ error: "New status must be provided." });
     }
 
-    const doc = await sertifikatService.getById(id);
-    if (!doc) return res.status(404).json({ error: "Document not found." });
-
     if (role.toLowerCase() === 'admin') {
-      const updated = await sertifikatService.update(id, { status });
-      await auditService.log({ userId, action: status === "rejected" ? "reject" : "approve", documentId: id, detail: doc.title });
+      const updated = await sertifikatService.update(doc.id, { status });
+      await auditService.log({ userId, action: status === "rejected" ? "reject" : "approve", documentId: doc.id, detail: doc.title });
       return res.json({ message: "Status updated.", data: updated });
     }
 
@@ -111,8 +105,8 @@ exports.updateStatus = async (req, res) => {
     }
 
     if (status === 'rejected') {
-      const updated = await sertifikatService.update(id, { status: 'rejected' });
-      await auditService.log({ userId, action: "reject", documentId: id, detail: doc.title });
+      const updated = await sertifikatService.update(doc.id, { status: 'rejected' });
+      await auditService.log({ userId, action: "reject", documentId: doc.id, detail: doc.title });
       return res.json({ message: "Document rejected.", data: updated });
     }
 
@@ -127,12 +121,12 @@ exports.updateStatus = async (req, res) => {
     const isFullyApproved = approverIds.length > 0 && approverIds.every(id => approvedByIds.includes(id));
     const finalStatus = isFullyApproved ? 'final' : 'pending';
 
-    const updated = await sertifikatService.update(id, {
+    const updated = await sertifikatService.update(doc.id, {
       status: finalStatus,
       approvedByIds: JSON.stringify(approvedByIds)
     });
 
-    await auditService.log({ userId, action: isApproving ? "approve" : "withdraw", documentId: id, detail: doc.title });
+    await auditService.log({ userId, action: isApproving ? "approve" : "withdraw", documentId: doc.id, detail: doc.title });
     res.json({
       message: "Approval recorded.",
       data: updated,
@@ -159,21 +153,16 @@ exports.reject = async (req, res) => {
 // delete certificate and its file
 exports.remove = async (req, res) => {
   try {
-    const { id } = req.params;
-    const document = await sertifikatService.getById(id);
+    const document = req.document;
 
-    if (!document) {
-      return res.status(404).json({ error: "Archive not found" });
-    }
-
-    await sertifikatService.remove(id);
+    await sertifikatService.remove(document.id);
 
     const absolutePath = path.join(__dirname, "../../", document.filePath);
     if (fs.existsSync(absolutePath)) {
       fs.unlinkSync(absolutePath);
     }
 
-    await auditService.log({ userId: req.user.id, action: "delete", documentId: id, detail: document.title });
+    await auditService.log({ userId: req.user.id, action: "delete", documentId: document.id, detail: document.title });
     res.json({ message: "Certificate archive successfully removed." });
   } catch (err) {
     console.error("Sertifikat Controller Error:", err);
@@ -184,12 +173,7 @@ exports.remove = async (req, res) => {
 // preview certificate file (inline, no download button)
 exports.preview = async (req, res) => {
   try {
-    const { id } = req.params;
-    const document = await sertifikatService.getById(id);
-
-    if (!document) {
-      return res.status(404).json({ error: "Document not found" });
-    }
+    const document = req.document;
 
     let finalPath = document.filePath;
     if (!finalPath.includes("sertifikat")) {
@@ -200,7 +184,7 @@ exports.preview = async (req, res) => {
     const absolutePath = path.join(__dirname, "../../", finalPath);
     res.setHeader("Content-Disposition", "inline");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    await auditService.log({ userId: req.user.id, action: "preview", documentId: id, detail: document.title });
+    await auditService.log({ userId: req.user.id, action: "preview", documentId: document.id, detail: document.title });
     res.sendFile(absolutePath);
   } catch (err) {
     console.error("Sertifikat Controller Error:", err);
@@ -211,12 +195,7 @@ exports.preview = async (req, res) => {
 // download certificate file
 exports.download = async (req, res) => {
   try {
-    const { id } = req.params;
-    const document = await sertifikatService.getById(id);
-
-    if (!document) {
-      return res.status(404).json({ error: "Document not found" });
-    }
+    const document = req.document;
 
     let finalPath = document.filePath;
     if (!finalPath.includes("sertifikat")) {
@@ -225,7 +204,7 @@ exports.download = async (req, res) => {
     }
 
     const absolutePath = path.join(__dirname, "../../", finalPath);
-    await auditService.log({ userId: req.user.id, action: "download", documentId: id, detail: document.title });
+    await auditService.log({ userId: req.user.id, action: "download", documentId: document.id, detail: document.title });
     res.download(absolutePath, getDownloadFileNameFromPath(finalPath, document.title || "certificate.pdf"));
   } catch (err) {
     console.error("Sertifikat Controller Error:", err);

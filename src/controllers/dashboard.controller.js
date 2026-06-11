@@ -25,7 +25,8 @@ exports.getOverview = async (req, res) => {
 // get monthly trends (last 12 months)
 exports.getTrends = async (req, res) => {
   try {
-    const data = await dashboardService.getTrends();
+    const { id: userId, role } = req.user;
+    const data = await dashboardService.getTrends(userId, role);
     res.json(data);
   } catch (err) {
     console.error("Dashboard Trends Error:", err);
@@ -37,13 +38,14 @@ exports.getTrends = async (req, res) => {
 exports.bulkApprove = async (req, res) => {
   try {
     const { ids } = req.body;
+    const { id: userId, role } = req.user;
 
     if (!ids || !ids.length) {
       return res.status(400).json({ error: "No document IDs provided." });
     }
 
-    const result = await dashboardService.bulkUpdateStatus(ids, "final");
-    await auditService.log({ userId: req.user.id, action: "bulk-approve", detail: `Approved ${result.count} documents: [${ids.join(", ")}]` });
+    const result = await dashboardService.bulkUpdateStatus(ids, "final", userId, role);
+    await auditService.log({ userId, action: "bulk-approve", detail: `Approved ${result.count} documents: [${ids.join(", ")}]` });
     res.json({
       message: `${result.count} documents successfully approved.`,
       count: result.count,
@@ -58,13 +60,14 @@ exports.bulkApprove = async (req, res) => {
 exports.bulkReject = async (req, res) => {
   try {
     const { ids } = req.body;
+    const { id: userId, role } = req.user;
 
     if (!ids || !ids.length) {
       return res.status(400).json({ error: "No document IDs provided." });
     }
 
-    const result = await dashboardService.bulkUpdateStatus(ids, "rejected");
-    await auditService.log({ userId: req.user.id, action: "bulk-reject", detail: `Rejected ${result.count} documents: [${ids.join(", ")}]` });
+    const result = await dashboardService.bulkUpdateStatus(ids, "rejected", userId, role);
+    await auditService.log({ userId, action: "bulk-reject", detail: `Rejected ${result.count} documents: [${ids.join(", ")}]` });
     res.json({
       message: `${result.count} documents successfully rejected.`,
       count: result.count,

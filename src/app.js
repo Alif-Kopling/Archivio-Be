@@ -2,10 +2,20 @@ const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",")
+    : ["http://localhost:5173", "http://localhost:3000"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(helmet());
+app.use(cors(corsOptions));
+app.use(express.json({ limit: "50mb" }));
 
 const authRoutes = require("./routes/auth.routes");
 const suratMasukRoutes = require("./routes/suratMasuk.routes");

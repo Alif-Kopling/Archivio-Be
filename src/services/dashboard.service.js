@@ -228,12 +228,22 @@ const getOverview = async ({ search, page = 1, limit = 10, userId, role }) => {
   };
 };
 
-const getTrends = async () => {
+const getTrends = async (userId, role) => {
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1);
 
+  const where = {
+    createdAt: { gte: startOfYear },
+    ...(role && role.toLowerCase() !== "admin" && userId && {
+      OR: [
+        { createdBy: userId },
+        { approverIds: { contains: `"${String(userId)}"` } },
+      ],
+    }),
+  };
+
   const documents = await prisma.document.findMany({
-    where: { createdAt: { gte: startOfYear } },
+    where,
     select: { createdAt: true, type: true },
   });
 
@@ -254,20 +264,24 @@ const getTrends = async () => {
   return Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
 };
 
-const bulkUpdateStatus = async (ids, status) => {
+const bulkUpdateStatus = async (ids, status, userId, role) => {
   if (!Array.isArray(ids) || ids.length === 0) {
     return { count: 0 };
   }
 
+  const where = {
+    id: { in: ids.map((id) => Number(id)) },
+  };
+
+  if (role && role.toLowerCase() !== "admin") {
+    where.OR = [
+      { approverIds: { contains: `"${String(userId)}"` } },
+    ];
+  }
+
   return prisma.document.updateMany({
-    where: {
-      id: {
-        in: ids.map((id) => Number(id)),
-      },
-    },
-    data: {
-      status,
-    },
+    where,
+    data: { status },
   });
 };
 
