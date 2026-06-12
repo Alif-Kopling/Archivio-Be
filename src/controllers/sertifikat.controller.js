@@ -3,7 +3,7 @@ const fs = require("fs");
 const sertifikatService = require("../services/sertifikat.service");
 const notificationService = require("../services/notification.service");
 const auditService = require("../services/audit.service");
-const { getInitialStatus, sanitizeDocumentUpdate } = require("../utils/documentStatus");
+const { getInitialStatus, normalizeDocumentDate, sanitizeDocumentUpdate } = require("../utils/documentStatus");
 const { getDownloadFileNameFromPath } = require("../utils/fileName");
 const { getBulkFieldValue } = require("../utils/bulkUploadFields");
 
@@ -39,8 +39,11 @@ exports.create = async (req, res) => {
     const status = getInitialStatus(role);
     const approverIds = req.body.approverIds ? JSON.parse(req.body.approverIds) : [];
 
+    const documentDate = normalizeDocumentDate(req.body.documentDate);
+
     const data = await sertifikatService.create({
       ...req.body,
+      documentDate,
       filePath,
       status,
       createdBy: userId,

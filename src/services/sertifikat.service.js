@@ -90,6 +90,8 @@ const create = async (data) => {
   return prisma.document.create({
     data: {
       title: data.title,
+      sender: data.sender ?? null,
+      documentDate: data.documentDate ?? null,
       filePath: data.filePath,
       type: "sertifikat",
       status: data.status || "pending",

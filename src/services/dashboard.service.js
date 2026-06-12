@@ -244,7 +244,7 @@ const getTrends = async (userId, role) => {
 
   const documents = await prisma.document.findMany({
     where,
-    select: { createdAt: true, type: true },
+    select: { documentDate: true, type: true },
   });
 
   const monthMap = {};
@@ -254,7 +254,8 @@ const getTrends = async (userId, role) => {
   }
 
   documents.forEach((doc) => {
-    const key = `${doc.createdAt.getFullYear()}-${String(doc.createdAt.getMonth() + 1).padStart(2, '0')}`;
+    if (!doc.documentDate) return;
+    const key = `${doc.documentDate.getFullYear()}-${String(doc.documentDate.getMonth() + 1).padStart(2, '0')}`;
     if (monthMap[key]) {
       monthMap[key][doc.type] += 1;
       monthMap[key].total += 1;
