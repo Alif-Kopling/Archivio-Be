@@ -12,7 +12,7 @@ const MAGIC_BYTES = {
   docx: [0x50, 0x4B, 0x03, 0x04],
 };
 
-const validateFileMagic = (req, res, next) => {
+const validateLocalFiles = (req, res) => {
   const files = req.file ? [req.file] : req.files || [];
   for (const file of files) {
     const ext = path.extname(file.originalname).toLowerCase().replace(".", "");
@@ -28,13 +28,19 @@ const validateFileMagic = (req, res, next) => {
       const valid = magic.every((byte, i) => buf[i] === byte);
       if (!valid) {
         fs.unlinkSync(file.path);
-        return res.status(400).json({ error: `File ${file.originalname} has invalid file signature.` });
+        res.status(400).json({ error: `File ${file.originalname} has invalid file signature.` });
+        return false;
       }
     } catch {
-      return res.status(500).json({ error: "Failed to validate file." });
+      res.status(500).json({ error: "Failed to validate file." });
+      return false;
     }
   }
-  next();
+  return true;
+};
+
+const validateFileMagic = (req, res, next) => {
+  if (validateLocalFiles(req, res)) next();
 };
 
 const MIME_TYPES_BY_FOLDER = {
@@ -140,6 +146,9 @@ const uploadSingleWithGDrive = (req, res, next) => {
     }
 
     if (req.file) {
+      // validate magic bytes BEFORE uploading to GDrive (which deletes local file)
+      if (!validateLocalFiles(req, res)) return;
+
       const folderType = getUploadFolder(req);
       await uploadToGDrive(req.file, folderType);
     }
@@ -157,6 +166,9 @@ const uploadBulkWithGDrive = (req, res, next) => {
       return res.status(400).json({ error: err.message });
     }
 
+    // validate magic bytes BEFORE uploading to GDrive (which deletes local file)
+    if (!validateLocalFiles(req, res)) return;
+
     if (req.files && req.files.length > 0) {
       const folderType = getUploadFolder(req);
       await Promise.all(req.files.map((f) => uploadToGDrive(f, folderType)));
@@ -166,4 +178,4 @@ const uploadBulkWithGDrive = (req, res, next) => {
   });
 };
 
-module.exports = { uploadSingle: uploadSingleWithGDrive, uploadBulk: uploadBulkWithGDrive, validateFileMagic };
+module.exports = { uploadSingle: uploadSingleWithGDrive, uploadBulk: uploadBulkWithGDrive };

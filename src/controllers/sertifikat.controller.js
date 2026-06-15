@@ -264,12 +264,16 @@ exports.createBulk = async (req, res) => {
       try {
         const title = getBulkFieldValue(req.body, "title", file, index, file.originalname);
         const issuer = getBulkFieldValue(req.body, "issuer", file, index);
+        const documentDate = normalizeDocumentDate(
+          getBulkFieldValue(req.body, "documentDate", file, index),
+        );
 
         const approverIds = req.body.approverIds ? JSON.parse(req.body.approverIds) : [];
 
         const data = await sertifikatService.create({
           title: title.trim(),
           issuer: issuer.trim() || null,
+          documentDate,
           filePath: file.path,
           fileId: file.gdriveFileId || null,
           storageType: file.gdriveFileId ? "gdrive" : "local",

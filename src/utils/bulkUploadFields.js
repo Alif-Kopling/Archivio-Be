@@ -6,6 +6,7 @@ const buildBulkFieldKeys = (field, file, index) => {
     `${field}_${fieldName}_${index}`,
     `${field}_${originalName}_${index}`,
     `${field}_${file?.filename || originalName}_${index}`,
+    `${field}_${index}`,
   ];
 };
 

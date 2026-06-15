@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const suratMasukController = require("../controllers/suratMasuk.controller");
-const { uploadSingle, uploadBulk, validateFileMagic } = require("../middlewares/upload.middleware");
+const { uploadSingle, uploadBulk } = require("../middlewares/upload.middleware");
 const auth = require("../middlewares/auth.middleware");
 const { role } = require("../middlewares/role.middleware");
 const authorizeDocument = require("../middlewares/authorizeDocument");
@@ -15,8 +15,8 @@ router.get("/download/:id", authorizeDocument, suratMasukController.download);
 router.get("/preview/:id", authorizeDocument, suratMasukController.preview);
 
 // both staff and admin can upload, always saved as draft
-router.post("/", role(["admin", "staff"]), uploadSingle, validateFileMagic, suratMasukController.create);
-router.post("/bulk", role(["admin", "staff"]), uploadBulk, validateFileMagic, suratMasukController.createBulk);
+router.post("/", role(["admin", "staff"]), uploadSingle, suratMasukController.create);
+router.post("/bulk", role(["admin", "staff"]), uploadBulk, suratMasukController.createBulk);
 
 // admin-only: manage all archives
 // using PATCH for status updates

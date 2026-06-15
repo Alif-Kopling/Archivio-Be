@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const suratKeluarController = require("../controllers/suratKeluar.controller");
-const { uploadSingle, uploadBulk, validateFileMagic } = require("../middlewares/upload.middleware");
+const { uploadSingle, uploadBulk } = require("../middlewares/upload.middleware");
 const auth = require("../middlewares/auth.middleware");
 const { role } = require("../middlewares/role.middleware");
 const authorizeDocument = require("../middlewares/authorizeDocument");
@@ -15,8 +15,8 @@ router.get("/preview/:id", authorizeDocument, suratKeluarController.preview);
 router.post("/send-email", role(["admin", "staff"]), suratKeluarController.sendEmail);
 router.post("/:id/send-email", role(["admin", "staff"]), authorizeDocument, suratKeluarController.sendEmail);
 
-router.post("/", role(["admin", "staff"]), uploadSingle, validateFileMagic, suratKeluarController.create);
-router.post("/bulk", role(["admin", "staff"]), uploadBulk, validateFileMagic, suratKeluarController.createBulk);
+router.post("/", role(["admin", "staff"]), uploadSingle, suratKeluarController.create);
+router.post("/bulk", role(["admin", "staff"]), uploadBulk, suratKeluarController.createBulk);
 
 // general update, for fields other than status
 router.put("/:id", role(["admin"]), authorizeDocument, suratKeluarController.update);
