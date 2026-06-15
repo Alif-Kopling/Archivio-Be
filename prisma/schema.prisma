@@ -21,8 +21,10 @@ model Document {
   title     String
   sender    String?
   documentDate DateTime?
-  filePath  String
-  type      String   // masuk / keluar / sertifikat
+  filePath    String?
+  fileId      String?
+  storageType String  @default("gdrive") // local / gdrive
+  type        String   // masuk / keluar / sertifikat
   status    String   @default("pending") // pending / verified / rejected
   createdAt DateTime @default(now())
 

@@ -93,6 +93,8 @@ const create = async (data) => {
       sender: data.sender ?? null,
       documentDate: data.documentDate ?? null,
       filePath: data.filePath,
+      fileId: data.fileId ?? null,
+      storageType: data.storageType ?? "local",
       type: "masuk",
       status: "pending",
       createdBy: data.createdBy,

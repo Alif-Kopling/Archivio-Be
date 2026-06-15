@@ -3,12 +3,33 @@ const fs = require("fs");
 const suratKeluarService = require("../services/suratKeluar.service");
 const notificationService = require("../services/notification.service");
 const auditService = require("../services/audit.service");
+const googleDrive = require("../utils/googleDrive");
 const { sendDocumentEmail } = require("../services/email.service");
 const { getInitialStatus, normalizeDocumentDate, sanitizeDocumentUpdate } = require("../utils/documentStatus");
 const { getDownloadFileNameFromPath } = require("../utils/fileName");
 const { getBulkFieldValue } = require("../utils/bulkUploadFields");
 
-// list all outgoing letters
+const MIME_MAP = {
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+};
+
+const streamFromGDrive = async (res, fileId, document, action, actionLabel, fallbackName) => {
+  const meta = await googleDrive.getFileMetadata(fileId);
+  const fileStream = await googleDrive.getFileStream(fileId);
+  const ext = path.extname(meta.name || "").toLowerCase();
+
+  res.setHeader("Content-Type", MIME_MAP[ext] || meta.mimeType || "application/octet-stream");
+  res.setHeader("Content-Disposition", `${action === "download" ? "attachment" : "inline"}; filename="${getDownloadFileNameFromPath(meta.name, document.title || fallbackName)}"`);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  fileStream.pipe(res);
+};
+
 exports.getAll = async (req, res) => {
   try {
     const { search, page = 1, limit = 10, sortBy, sortOrder, status } = req.query;
@@ -32,10 +53,11 @@ exports.getAll = async (req, res) => {
   }
 };
 
-// create single outgoing letter
 exports.create = async (req, res) => {
   try {
     const filePath = req.file ? req.file.path : null;
+    const fileId = req.file?.gdriveFileId || null;
+    const storageType = fileId ? "gdrive" : "local";
     const { id: userId, role } = req.user;
     const status = getInitialStatus(role);
     const title = typeof req.body.title === "string" ? req.body.title.trim() : "";
@@ -58,6 +80,8 @@ exports.create = async (req, res) => {
       sender,
       documentDate,
       filePath,
+      fileId,
+      storageType,
       status,
       createdBy: userId,
       approverIds,
@@ -80,7 +104,6 @@ exports.create = async (req, res) => {
   }
 };
 
-// update outgoing letter
 exports.update = async (req, res) => {
   try {
     const dataToUpdate = sanitizeDocumentUpdate(req.body);
@@ -97,7 +120,6 @@ exports.update = async (req, res) => {
   }
 };
 
-// update outgoing letter status (admin or staff approver)
 exports.updateStatus = async (req, res) => {
   try {
     const { id: userId, role } = req.user;
@@ -114,7 +136,6 @@ exports.updateStatus = async (req, res) => {
       return res.json({ message: "Status updated.", data: updated });
     }
 
-    // Logic untuk user staf (approver)
     const approverIds = JSON.parse(doc.approverIds || "[]").map(String);
     if (!approverIds.includes(String(userId))) {
       return res.status(403).json({ error: "Not authorized to approve." });
@@ -154,28 +175,31 @@ exports.updateStatus = async (req, res) => {
   }
 };
 
-// approve outgoing letter
 exports.approve = async (req, res) => {
   req.body = { ...req.body, status: "final" };
   return exports.updateStatus(req, res);
 };
 
-// reject outgoing letter
 exports.reject = async (req, res) => {
   req.body = { ...req.body, status: "rejected" };
   return exports.updateStatus(req, res);
 };
 
-// delete outgoing letter and its file
 exports.remove = async (req, res) => {
   try {
     const document = req.document;
 
     await suratKeluarService.remove(document.id);
 
-    const absolutePath = path.join(__dirname, "../../", document.filePath);
-    if (fs.existsSync(absolutePath)) {
-      fs.unlinkSync(absolutePath);
+    if (document.storageType === "gdrive" && document.fileId) {
+      await googleDrive.deleteFile(document.fileId).catch(err => {
+        console.warn("[gdrive] delete failed:", err.message);
+      });
+    } else {
+      const absolutePath = path.join(__dirname, "../../", document.filePath);
+      if (fs.existsSync(absolutePath)) {
+        fs.unlinkSync(absolutePath);
+      }
     }
 
     await auditService.log({ userId: req.user.id, action: "delete", documentId: document.id, detail: document.title });
@@ -186,10 +210,14 @@ exports.remove = async (req, res) => {
   }
 };
 
-// preview outgoing letter file (inline, no download button)
 exports.preview = async (req, res) => {
   try {
     const document = req.document;
+
+    if (document.storageType === "gdrive" && document.fileId) {
+      await auditService.log({ userId: req.user.id, action: "preview", documentId: document.id, detail: document.title });
+      return await streamFromGDrive(res, document.fileId, document, "preview", "preview", "document.pdf");
+    }
 
     let finalPath = document.filePath;
     if (!finalPath.includes("surat-keluar")) {
@@ -208,10 +236,14 @@ exports.preview = async (req, res) => {
   }
 };
 
-// download outgoing letter file
 exports.download = async (req, res) => {
   try {
     const document = req.document;
+
+    if (document.storageType === "gdrive" && document.fileId) {
+      await auditService.log({ userId: req.user.id, action: "download", documentId: document.id, detail: document.title });
+      return await streamFromGDrive(res, document.fileId, document, "download", "download", document.title || "document.pdf");
+    }
 
     let finalPath = document.filePath;
     if (!finalPath.includes("surat-keluar")) {
@@ -228,7 +260,6 @@ exports.download = async (req, res) => {
   }
 };
 
-// send outgoing letter via email
 exports.sendEmail = async (req, res) => {
   try {
     const document = req.document || await suratKeluarService.getById(req.params.id || req.body.id);
@@ -256,18 +287,28 @@ exports.sendEmail = async (req, res) => {
       });
     }
 
-    let finalPath = document.filePath;
-    if (!finalPath.includes("surat-keluar")) {
-      const fileName = path.basename(finalPath);
-      finalPath = path.join("uploads/surat-keluar", fileName);
-    }
+    let attachmentPath;
+    let attachmentName;
 
-    const absolutePath = path.join(__dirname, "../../", finalPath);
-    if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({
-        success: false,
-        error: "Document file not found on server.",
-      });
+    if (document.storageType === "gdrive" && document.fileId) {
+      attachmentPath = await googleDrive.downloadToTemp(document.fileId);
+      attachmentName = getDownloadFileNameFromPath(path.basename(attachmentPath), document.title || "document.pdf");
+    } else {
+      let finalPath = document.filePath;
+      if (!finalPath.includes("surat-keluar")) {
+        const fileName = path.basename(finalPath);
+        finalPath = path.join("uploads/surat-keluar", fileName);
+      }
+
+      attachmentPath = path.join(__dirname, "../../", finalPath);
+      attachmentName = getDownloadFileNameFromPath(finalPath, document.title || "document.pdf");
+
+      if (!fs.existsSync(attachmentPath)) {
+        return res.status(404).json({
+          success: false,
+          error: "Document file not found on server.",
+        });
+      }
     }
 
     const info = await sendDocumentEmail({
@@ -276,10 +317,11 @@ exports.sendEmail = async (req, res) => {
       text: typeof message === "string" && message.trim()
         ? message.trim()
         : `Attached is the document ${document.title}.`,
-      attachmentPath: absolutePath,
-      attachmentName: getDownloadFileNameFromPath(finalPath, document.title || "document.pdf"),
+      attachmentPath,
+      attachmentName,
     });
 
+    const id = req.params.id || req.body.id;
     await auditService.log({ userId: req.user.id, action: "send-email", documentId: id, detail: `to: ${to}, subject: ${subject}` });
     return res.status(200).json({
       success: true,
@@ -310,7 +352,6 @@ exports.sendEmail = async (req, res) => {
   }
 };
 
-// bulk upload outgoing letters
 exports.createBulk = async (req, res) => {
   try {
     const { id: userId, role } = req.user;
@@ -344,6 +385,8 @@ exports.createBulk = async (req, res) => {
           sender: sender.trim(),
           documentDate,
           filePath: file.path,
+          fileId: file.gdriveFileId || null,
+          storageType: file.gdriveFileId ? "gdrive" : "local",
           status,
           createdBy: userId,
           approverIds,

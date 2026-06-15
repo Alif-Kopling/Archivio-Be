@@ -1,6 +1,7 @@
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const googleDrive = require("../utils/googleDrive");
 
 const MAGIC_BYTES = {
   pdf: [0x25, 0x50, 0x44, 0x46],
@@ -103,7 +104,7 @@ const uploadSingle = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB
+    fileSize: 5 * 1024 * 1024
   }
 }).single("file");
 
@@ -111,8 +112,58 @@ const uploadBulk = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB per file
+    fileSize: 5 * 1024 * 1024
   }
-}).array("files", 20); // Max 20 files
+}).array("files", 20);
 
-module.exports = { uploadSingle, uploadBulk, validateFileMagic };
+const uploadToGDrive = async (file, folderType) => {
+  try {
+    const result = await googleDrive.uploadFile(file.path, file.mimetype, folderType);
+    file.gdriveFileId = result.fileId;
+    file.gdriveMimeType = result.mimeType;
+
+    fs.unlink(file.path, (err) => {
+      if (err) console.warn("[gdrive] failed to delete local temp file:", file.path);
+    });
+  } catch (err) {
+    console.warn("[gdrive] upload failed, falling back to local storage:", err.message);
+  }
+};
+
+const uploadSingleWithGDrive = (req, res, next) => {
+  uploadSingle(req, res, async (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (req.file) {
+      const folderType = getUploadFolder(req);
+      await uploadToGDrive(req.file, folderType);
+    }
+
+    next();
+  });
+};
+
+const uploadBulkWithGDrive = (req, res, next) => {
+  uploadBulk(req, res, async (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (req.files && req.files.length > 0) {
+      const folderType = getUploadFolder(req);
+      await Promise.all(req.files.map((f) => uploadToGDrive(f, folderType)));
+    }
+
+    next();
+  });
+};
+
+module.exports = { uploadSingle: uploadSingleWithGDrive, uploadBulk: uploadBulkWithGDrive, validateFileMagic };

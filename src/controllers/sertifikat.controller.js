@@ -3,11 +3,32 @@ const fs = require("fs");
 const sertifikatService = require("../services/sertifikat.service");
 const notificationService = require("../services/notification.service");
 const auditService = require("../services/audit.service");
+const googleDrive = require("../utils/googleDrive");
 const { getInitialStatus, normalizeDocumentDate, sanitizeDocumentUpdate } = require("../utils/documentStatus");
 const { getDownloadFileNameFromPath } = require("../utils/fileName");
 const { getBulkFieldValue } = require("../utils/bulkUploadFields");
 
-// list all certificates
+const MIME_MAP = {
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+};
+
+const streamFromGDrive = async (res, fileId, document, action, actionLabel, fallbackName) => {
+  const meta = await googleDrive.getFileMetadata(fileId);
+  const fileStream = await googleDrive.getFileStream(fileId);
+  const ext = path.extname(meta.name || "").toLowerCase();
+
+  res.setHeader("Content-Type", MIME_MAP[ext] || meta.mimeType || "application/octet-stream");
+  res.setHeader("Content-Disposition", `${action === "download" ? "attachment" : "inline"}; filename="${getDownloadFileNameFromPath(meta.name, document.title || fallbackName)}"`);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  fileStream.pipe(res);
+};
+
 exports.getAll = async (req, res) => {
   try {
     const { search, page = 1, limit = 10, sortBy, sortOrder, status } = req.query;
@@ -31,10 +52,11 @@ exports.getAll = async (req, res) => {
   }
 };
 
-// create single certificate
 exports.create = async (req, res) => {
   try {
     const filePath = req.file ? req.file.path : null;
+    const fileId = req.file?.gdriveFileId || null;
+    const storageType = fileId ? "gdrive" : "local";
     const { role, id: userId } = req.user;
     const status = getInitialStatus(role);
     const approverIds = req.body.approverIds ? JSON.parse(req.body.approverIds) : [];
@@ -45,6 +67,8 @@ exports.create = async (req, res) => {
       ...req.body,
       documentDate,
       filePath,
+      fileId,
+      storageType,
       status,
       createdBy: userId,
       approverIds,
@@ -67,7 +91,6 @@ exports.create = async (req, res) => {
   }
 };
 
-// update certificate
 exports.update = async (req, res) => {
   try {
     const dataToUpdate = sanitizeDocumentUpdate(req.body);
@@ -84,7 +107,6 @@ exports.update = async (req, res) => {
   }
 };
 
-// update certificate status (admin or staff approver)
 exports.updateStatus = async (req, res) => {
   try {
     const { id: userId, role } = req.user;
@@ -101,7 +123,6 @@ exports.updateStatus = async (req, res) => {
       return res.json({ message: "Status updated.", data: updated });
     }
 
-    // Logic untuk user staf (approver)
     const approverIds = JSON.parse(doc.approverIds || "[]").map(String);
     if (!approverIds.includes(String(userId))) {
       return res.status(403).json({ error: "Not authorized to approve." });
@@ -141,28 +162,31 @@ exports.updateStatus = async (req, res) => {
   }
 };
 
-// approve certificate
 exports.approve = async (req, res) => {
   req.body = { ...req.body, status: "final" };
   return exports.updateStatus(req, res);
 };
 
-// reject certificate
 exports.reject = async (req, res) => {
   req.body = { ...req.body, status: "rejected" };
   return exports.updateStatus(req, res);
 };
 
-// delete certificate and its file
 exports.remove = async (req, res) => {
   try {
     const document = req.document;
 
     await sertifikatService.remove(document.id);
 
-    const absolutePath = path.join(__dirname, "../../", document.filePath);
-    if (fs.existsSync(absolutePath)) {
-      fs.unlinkSync(absolutePath);
+    if (document.storageType === "gdrive" && document.fileId) {
+      await googleDrive.deleteFile(document.fileId).catch(err => {
+        console.warn("[gdrive] delete failed:", err.message);
+      });
+    } else {
+      const absolutePath = path.join(__dirname, "../../", document.filePath);
+      if (fs.existsSync(absolutePath)) {
+        fs.unlinkSync(absolutePath);
+      }
     }
 
     await auditService.log({ userId: req.user.id, action: "delete", documentId: document.id, detail: document.title });
@@ -173,10 +197,14 @@ exports.remove = async (req, res) => {
   }
 };
 
-// preview certificate file (inline, no download button)
 exports.preview = async (req, res) => {
   try {
     const document = req.document;
+
+    if (document.storageType === "gdrive" && document.fileId) {
+      await auditService.log({ userId: req.user.id, action: "preview", documentId: document.id, detail: document.title });
+      return await streamFromGDrive(res, document.fileId, document, "preview", "preview", "certificate.pdf");
+    }
 
     let finalPath = document.filePath;
     if (!finalPath.includes("sertifikat")) {
@@ -195,10 +223,14 @@ exports.preview = async (req, res) => {
   }
 };
 
-// download certificate file
 exports.download = async (req, res) => {
   try {
     const document = req.document;
+
+    if (document.storageType === "gdrive" && document.fileId) {
+      await auditService.log({ userId: req.user.id, action: "download", documentId: document.id, detail: document.title });
+      return await streamFromGDrive(res, document.fileId, document, "download", "download", document.title || "certificate.pdf");
+    }
 
     let finalPath = document.filePath;
     if (!finalPath.includes("sertifikat")) {
@@ -215,7 +247,6 @@ exports.download = async (req, res) => {
   }
 };
 
-// bulk upload certificates
 exports.createBulk = async (req, res) => {
   try {
     const { role, id: userId } = req.user;
@@ -240,6 +271,8 @@ exports.createBulk = async (req, res) => {
           title: title.trim(),
           issuer: issuer.trim() || null,
           filePath: file.path,
+          fileId: file.gdriveFileId || null,
+          storageType: file.gdriveFileId ? "gdrive" : "local",
           status,
           createdBy: userId,
           approverIds,
