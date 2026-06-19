@@ -25,11 +25,18 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
+    "playwright": "^1.61.0",
     "prisma": "~5.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "bcrypt@6.0.0": true,
+    "prisma@5.22.0": true
   }
 }
