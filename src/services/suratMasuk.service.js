@@ -19,12 +19,6 @@ const getAll = async ({ search, page = 1, limit = 10, sortBy = "createdAt", sort
       },
     }),
     ...(status && status !== "all" && { status }),
-    ...(role && role.toLowerCase() !== "admin" && userId && {
-      OR: [
-        { createdBy: userId },
-        { approverIds: { contains: `"${String(userId)}"` } },
-      ],
-    }),
   };
 
   const [data, total, pending, verified] = await Promise.all([
